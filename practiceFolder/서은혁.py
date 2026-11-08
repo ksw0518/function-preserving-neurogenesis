@@ -5,11 +5,13 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
+import matplotlib.pyplot as plt
+
 print('MPS Available:', torch.backends.mps.is_available())
 print('MPS Built:', torch.backends.mps.is_built())
 
 device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-print('Device:', device)
+print('Device: ', device)
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -33,13 +35,13 @@ class TestNetwork(nn.Module):
         super().__init__()
 
         self.fc1 = nn.Linear(784, 600)
-        self.relu1 = nn.ReLU()
+        self.relu1 = nn.Sigmoid()
 
         self.fc2 = nn.Linear(600, 400)
-        self.relu2 = nn.ReLU()
+        self.relu2 = nn.Sigmoid()
 
         self.fc3 = nn.Linear(400, 200)
-        self.relu3 = nn.ReLU()
+        self.relu3 = nn.Sigmoid()
         self.fc4 = nn.Linear(200, 10)
 
     def forward(self, x):
@@ -95,3 +97,9 @@ epochs = input('Enter the number of epochs: ')
 for epoch in range(int(epochs)):
     train_loss, train_accuracy = train(model, train_loader, criterion, optimizer)
     print(f'Epoch [{epoch+1}/{epochs}], Loss: {train_loss:.4f}, Accuracy: {train_accuracy:.4f}')
+
+plt.plot(range(1, int(epochs)+1), train_loss, color='blue')
+plt.title('Training Loss over Epochs')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.show()
