@@ -6,10 +6,11 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 import network as net
 import train_net as tn
+import detect_dead as dt
 
 
+epochs = 2
 
-epochs = 5
 
 for epoch in range(epochs):
 
@@ -33,3 +34,6 @@ for epoch in range(epochs):
         f"| Test Loss: {test_loss:.4f} "
         f"| Test Acc: {test_acc*100:.2f}%"
     )
+
+print(dt.detect_dead_neuron(net.model, net.test_loader, net.optimizer, 0.9))
+print("lel")

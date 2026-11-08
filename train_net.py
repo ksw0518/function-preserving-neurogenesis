@@ -1,10 +1,6 @@
 
 import torch
-
-
-device = torch.device(
-    "cuda" if torch.cuda.is_available() else "cpu"
-)
+import network as net
 
 def train(model, dataloader, criterion, optimizer):
 
@@ -16,8 +12,8 @@ def train(model, dataloader, criterion, optimizer):
 
     for images, labels in dataloader:
 
-        images = images.to(device)
-        labels = labels.to(device)
+        images = images.to(net.device)
+        labels = labels.to(net.device)
 
         # 1. Gradient 초기화
         optimizer.zero_grad()
@@ -59,8 +55,8 @@ def evaluate(model, dataloader, criterion):
 
         for images, labels in dataloader:
 
-            images = images.to(device)
-            labels = labels.to(device)
+            images = images.to(net.device)
+            labels = labels.to(net.device)
 
             outputs = model(images)
 

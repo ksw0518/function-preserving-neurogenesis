@@ -5,11 +5,18 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
-device = torch.device(
-    "cuda" if torch.cuda.is_available() else "cpu"
-)
 
-print("Device:", device)
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif hasattr(torch, "xpu") and torch.xpu.is_available():
+    device = torch.device("xpu")
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
+
+print(f"사용 중인 디바이스: {device}")
+
 
 # 이미지 전처리
 transform = transforms.Compose([
