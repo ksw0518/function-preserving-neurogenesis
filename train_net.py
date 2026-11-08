@@ -1,4 +1,3 @@
-
 import torch
 import network as net
 
@@ -73,4 +72,3 @@ def evaluate(model, dataloader, criterion):
     accuracy = correct / total
 
     return avg_loss, accuracy
-
