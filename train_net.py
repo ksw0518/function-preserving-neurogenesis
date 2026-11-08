@@ -1,4 +1,3 @@
-
 import torch
 
 
@@ -77,4 +76,3 @@ def evaluate(model, dataloader, criterion):
     accuracy = correct / total
 
     return avg_loss, accuracy
-
