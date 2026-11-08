@@ -8,7 +8,6 @@ import network as net
 import train_net as tn
 
 
-
 epochs = 5
 
 for epoch in range(epochs):
