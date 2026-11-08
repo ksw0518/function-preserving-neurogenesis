@@ -102,5 +102,24 @@ def train(model, dataloader, criterion, optimizer):
     correct = 0
     total = 0
 
+    for images, labels in dataloader:
+        images = images.to(device)
+        labels = images.to(device)
+
+        optimizer.zero_grad()
+
+        outputs = model(images)
+
+        loss = criterion(outputs, labels)
+
+        loss.backward()
+
+        optimizer.step()
+
+        total_loss += loss.item() * images.size(0)
+
+        predictions = outputs.argmax(dim=1)
+
+
 
 
