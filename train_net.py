@@ -6,8 +6,24 @@ def permute(images, perm):
     [B, 1, 28, 28] 이미지의 픽셀 순서를 perm(길이 784 인덱스 텐서)대로 섞음
     Permuted MNIST의 '과제'는 이 perm 하나로 정의됨
     """
-    # TODO: 이미지를 [B, 784]로 펴고 → perm 순서로 열 재배열 → 원래 모양으로 복구
-    pass
+    return images.flatten(1).index_select(1, perm).reshape_as(images)
+
+def update_utility(activations, utility, beta):
+    """
+    매 순간기여도를 누적하여 계산(지수이동평균 사용)
+    Permuted MNIST 사용시 필요
+    activations: 훅에서 저장, utility: 누적 점수, beta: EMA 계수
+    """
+    for name, acti in activations.items():
+        batch_score = acti.mean(dim = 0)
+
+        if name not in utility:
+            utility[name] = torch.zeros_like(batch_score)
+
+        utility[name] = beta * utility[name] + (1 - beta) * batch_score
+
+
+
 
 
 def train(model, dataloader, criterion, optimizer, perm=None, log=None, on_step=None):
@@ -27,6 +43,8 @@ def train(model, dataloader, criterion, optimizer, perm=None, log=None, on_step=
     for images, labels in dataloader:
 
         # TODO: perm이 None이 아니면 permute 적용 (.to(device) 전에 하는 걸 추천)
+        if perm is not None:
+            images = permute(images, perm)
 
         images = images.to(device)
         labels = labels.to(device)
@@ -55,11 +73,12 @@ def train(model, dataloader, criterion, optimizer, perm=None, log=None, on_step=
         correct += batch_correct
         total += labels.size(0)
 
-        # TODO: log가 None이 아니면 이번 배치 정확도(batch_correct / 배치 크기)를 log['step_acc']에 append
+        if log is not None:
+            log['step_acc'].append(batch_correct / labels.size(0))
 
-        # TODO: on_step이 None이 아니면 호출
-        #       utility 계산엔 이번 step의 활성값이 필요 → forward hook으로 잡은 값을 쓰거나,
-        #       on_step에 model을 넘겨서 거기서 처리. 어떤 인자를 넘길지는 utility 함수 설계에 맞출 것
+        if on_step is not None:
+            on_step()
+
 
     avg_loss = total_loss / total
     accuracy = correct / total
@@ -83,6 +102,8 @@ def evaluate(model, dataloader, criterion, perm=None):
         for images, labels in dataloader:
 
             # TODO: perm이 None이 아니면 permute 적용
+            if perm is not None:
+                images = permute(images, perm)
 
             images = images.to(device)
             labels = labels.to(device)
