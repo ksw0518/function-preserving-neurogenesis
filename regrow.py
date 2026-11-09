@@ -88,7 +88,9 @@ def check_shape(model, dead_idx, neurons_to_clone):
 
 if __name__ == '__main__':
     import network as net
-    model = net.MyNetwork().to(net.device)
+    device = net.set_device()
+    train_dataset, test_dataset, train_loader, test_loader = net.load_data()
+    model = net.MyNetwork().to(device)
 
     criterion = nn.CrossEntropyLoss()
 
@@ -106,8 +108,8 @@ if __name__ == '__main__':
     regrown = regrow(model, neuron_indices, to_clone_indices)
 
     # 테스트 데이터에서 첫 배치 하나만 꺼냄 (images: [배치, 1, 28, 28])
-    images, labels = next(iter(net.test_loader))
-    images = images.to(net.device)
+    images, labels = next(iter(test_loader))
+    images = images.to(device)
 
     # 같은 이미지를 두 모델에 넣어 출력(logits, [배치, 10]) 비교
     out1 = model(images)

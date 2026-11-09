@@ -6,58 +6,64 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
 
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-elif hasattr(torch, "xpu") and torch.xpu.is_available():
-    device = torch.device("xpu")
-elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-    device = torch.device("mps")
-else:
-    device = torch.device("cpu")
+def set_device():
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif hasattr(torch, "xpu") and torch.xpu.is_available():
+        device = torch.device("xpu")
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
 
-print(f"사용 중인 디바이스: {device}")
+    print(f"사용 중인 디바이스: {device}")
+    return device
 
 
-# 이미지 전처리
-transform = transforms.Compose([
+
+def load_data():
+    # 이미지 전처리
+    transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.1307,), (0.3081,))
 ])
 
-# MNIST 학습 데이터
-train_dataset = torchvision.datasets.MNIST(
+    # MNIST 학습 데이터
+    train_dataset = torchvision.datasets.MNIST(
     root="./data",
     train=True,
     download=True,
     transform=transform
 )
 
-# MNIST 테스트 데이터
-test_dataset = torchvision.datasets.MNIST(
+    # MNIST 테스트 데이터
+    test_dataset = torchvision.datasets.MNIST(
     root="./data",
     train=False,
     download=True,
     transform=transform
 )
 
-# 데이터를 Batch 단위로 묶기
-train_loader = DataLoader(
+    # 데이터를 Batch 단위로 묶기
+    train_loader = DataLoader(
     train_dataset,
     batch_size=128,
     shuffle=True
 )
 
-test_loader = DataLoader(
+    test_loader = DataLoader(
     test_dataset,
     batch_size=128,
     shuffle=False
 )
 
-images, labels = next(iter(train_loader))
+    images, labels = next(iter(train_loader))
 
-print("Image shape:", images.shape)
-print("Label shape:", labels.shape)
-print("First label:", labels[0].item())
+    print("Image shape:", images.shape)
+    print("Label shape:", labels.shape)
+    print("First label:", labels[0].item())
+
+    return train_dataset, test_dataset, train_loader, test_loader
 
 
 class MyNetwork(nn.Module):
@@ -86,6 +92,9 @@ class MyNetwork(nn.Module):
         return x
 
 if __name__ == '__main__':
+    device = set_device()
+    train_dataset, test_dataset, train_loader, test_loader = load_data()
+
     model = MyNetwork().to(device)
 
     criterion = nn.CrossEntropyLoss()
@@ -94,4 +103,3 @@ if __name__ == '__main__':
         model.parameters(),
         lr=0.001
     )
-
