@@ -1,19 +1,17 @@
 import torch
 import torch.nn as nn
-import network as net
 
-activations = {}
 
-def hook_fn(name):
+def hook_fn(name, store):
     def fn(module, input, output):
-        activations[name] = output.detach()
+        store[name] = output.detach()
     return fn
 
-def register_hooks(model, target_layers):
+def register_hooks(model, target_layers, store):
     hooks = []
     for name in target_layers:
         layer = getattr(model, name)  # 이름으로 층 꺼내기 (model.relu1과 같음)
-        hooks.append(layer.register_forward_hook(hook_fn(name)))
+        hooks.append(layer.register_forward_hook(hook_fn(name, store)))
     return hooks
 
 
@@ -23,21 +21,24 @@ def detect_dead_neuron(model, dataloader, near_dead_threshold=0.9, use_near_dead
         예) [[2, 17, 45], [8]] → 0번 층 뉴런 2,17,45 / 1번 층 뉴런 8
     use_near_dead=True면 zero ratio가 near_dead_threshold 이상인 뉴런까지 포함
     """
+    activations = {}
+
+    device = next(model.parameters()).device
+
     # 모델 안의 ReLU 층 이름을 정의된 순서대로 자동 수집
     target_layers = [name for name, m in model.named_modules() if isinstance(m, nn.ReLU)]
 
     was_training = model.training
     model.eval()
-    activations.clear()
 
-    hooks = register_hooks(model, target_layers)
+    hooks = register_hooks(model, target_layers, activations)
     zero_counts = {}
     total_samples = 0
 
     try:
         with torch.no_grad():
             for images, labels in dataloader:
-                images = images.to(net.device)
+                images = images.to(device)
                 total_samples += images.size(0)
                 model(images)
 
@@ -68,3 +69,27 @@ def detect_dead_neuron(model, dataloader, near_dead_threshold=0.9, use_near_dead
         dead_idx.append(dead.tolist())  # 텐서 → 파이썬 리스트
 
     return dead_idx
+
+if __name__ == '__main__':
+    import network as net
+    torch.manual_seed(0)  # 테스트 결과가 일정하도록 여기서는 랜덤 시드를 정함.
+
+    device = net.set_device()
+    train_dataset, test_dataset, train_loader, test_loader = net.load_data()
+    # 테스트용: 일부러 dead neuron을 만들어놓고 검출 결과와 일치하는지 확인
+    model = net.MyNetwork().to(device)
+    layers = [m for m in model.modules() if isinstance(m, nn.Linear)]
+
+    # 일부러 죽일 뉴런 (정답)
+    answer = [[3, 7, 10], [5]]
+
+    with torch.no_grad():
+        for layer_idx, neurons in enumerate(answer):
+            layers[layer_idx].weight[neurons] = 0   # 입력 무시
+            layers[layer_idx].bias[neurons] = -1    # 항상 음수 → ReLU 지나면 0
+
+    dead_idx = detect_dead_neuron(model, test_loader)
+
+    print("정답:", answer)
+    print("검출:", dead_idx)
+    print("일치:", dead_idx == answer)
