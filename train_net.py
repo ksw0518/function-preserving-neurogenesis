@@ -1,8 +1,8 @@
 import torch
-import network as net
+
 
 def train(model, dataloader, criterion, optimizer):
-
+    device = next(model.parameters()).device
     model.train()
 
     total_loss = 0
@@ -11,8 +11,8 @@ def train(model, dataloader, criterion, optimizer):
 
     for images, labels in dataloader:
 
-        images = images.to(net.device)
-        labels = labels.to(net.device)
+        images = images.to(device)
+        labels = labels.to(device)
 
         # 1. Gradient 초기화
         optimizer.zero_grad()
@@ -43,7 +43,7 @@ def train(model, dataloader, criterion, optimizer):
     return avg_loss, accuracy
 
 def evaluate(model, dataloader, criterion):
-
+    device = next(model.parameters()).device
     model.eval()
 
     total_loss = 0
@@ -54,8 +54,8 @@ def evaluate(model, dataloader, criterion):
 
         for images, labels in dataloader:
 
-            images = images.to(net.device)
-            labels = labels.to(net.device)
+            images = images.to(device)
+            labels = labels.to(device)
 
             outputs = model(images)
 
