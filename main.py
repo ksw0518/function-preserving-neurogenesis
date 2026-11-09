@@ -10,21 +10,28 @@ import detect_dead as dt
 
 
 epochs = 2
-
+device = net.set_device()
+train_dataset, test_dataset, train_loader, test_loader = net.load_data()
+model = net.MyNetwork().to(device)
+optimizer = optim.Adam(
+    model.parameters(),
+    lr=0.001
+)
+criterion = nn.CrossEntropyLoss()
 
 for epoch in range(epochs):
 
     train_loss, train_acc = tn.train(
-        net.model,
-        net.train_loader,
-        net.criterion,
-        net.optimizer
+        model,
+        train_loader,
+        criterion,
+        optimizer
     )
 
     test_loss, test_acc = tn.evaluate(
-        net.model,
-        net.test_loader,
-        net.criterion
+        model,
+        test_loader,
+        criterion
     )
 
     print(
@@ -35,5 +42,5 @@ for epoch in range(epochs):
         f"| Test Acc: {test_acc*100:.2f}%"
     )
 
-print(dt.detect_dead_neuron(net.model, net.test_loader, net.optimizer, 0.9))
+print(dt.detect_dead_neuron(model, test_loader, optimizer, 0.9))
 print("lel")
