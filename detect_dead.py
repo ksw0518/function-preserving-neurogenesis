@@ -77,7 +77,7 @@ def detect_dead_neuron(model, dataloader, optimizer, near_dead_threshold=0.9):
         # 100% 0이면 dead neuron
         dead = torch.where(zero_ratio == 1.0)[0]
 
-        # 설정한 임계값 이상 0인 경우 near dead
+        # 설정한 임곗값 이상 0인 경우 near dead
         near_dead = torch.where(
             zero_ratio >= near_dead_threshold
         )[0]
