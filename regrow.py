@@ -5,7 +5,7 @@ import torch.optim as optim
 import copy
 
 
-def regrow(model, dead_idx: np.ndarray, neurons_to_clone: np.ndarray, noise_std: float = 0.01):
+def regrow(model, dead_idx: list[list], neurons_to_clone: list[list], noise_std: float = 0.01):
     """
     뉴런 재생성 함수,
     dead_idx와 neurons_to_clone는 2차원 array(예: [[0, 1], [0, 1]]),
@@ -61,10 +61,16 @@ def regrow(model, dead_idx: np.ndarray, neurons_to_clone: np.ndarray, noise_std:
 
     return regrown
 
+
 def check_shape(model, dead_idx, neurons_to_clone):
-    # .shape 비교라 둘 다 넘파이 배열이어야 함 (리스트면 AttributeError)
-    if dead_idx.shape != neurons_to_clone.shape:
-        raise Exception('dead_idx랑 neurons_to_clone이랑 꼬라지 맞춰 와.')
+    # 층 개수 비교
+    if len(dead_idx) != len(neurons_to_clone):
+        raise ValueError('dead_idx랑 neurons_to_clone이랑 꼬라지 맞춰 와.')
+
+    # 층별 뉴런 개수 비교 (층끼리는 개수가 달라도 됨)
+    for d, c in zip(dead_idx, neurons_to_clone):
+        if len(d) != len(c):
+            raise ValueError('dead_idx랑 neurons_to_clone이랑 꼬라지 맞춰 와.')
 
     layers = [m for m in model.modules() if isinstance(m, nn.Linear)]
 
@@ -74,9 +80,10 @@ def check_shape(model, dead_idx, neurons_to_clone):
 
     # out_features = 그 층의 뉴런 개수 → 뉴런 번호는 0 ~ out_features-1
     for i, (d, c) in enumerate(zip(dead_idx, neurons_to_clone)):
+        if len(d) == 0:
+            continue  # dead 뉴런 없는 층은 건너뜀 (빈 리스트에 max 쓰면 에러)
         if max(max(d), max(c)) >= layers[i].out_features:
             raise ValueError('model 꼬라지랑 인덱스 인자 꼬라지 맞춰 와.')
-
 
 
 if __name__ == '__main__':
@@ -93,8 +100,8 @@ if __name__ == '__main__':
     )
 
     # 행 i = i번째 Linear 층. 같은 위치끼리 짝: 0번 층 뉴런 0 ← 5 복제, 뉴런 1 ← 6 복제
-    neuron_indices = np.array([[0, 1], [0, 1]])
-    to_clone_indices = np.array([[5, 6], [5, 6]])
+    neuron_indices = [[0, 1], [0]]
+    to_clone_indices = [[5, 6], [5]]
 
     regrown = regrow(model, neuron_indices, to_clone_indices)
 
