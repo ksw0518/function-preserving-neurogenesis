@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 
 
 def permute(images, perm):
@@ -7,6 +8,24 @@ def permute(images, perm):
     Permuted MNIST의 '과제'는 이 perm 하나로 정의됨
     """
     return images.flatten(1).index_select(1, perm).reshape_as(images)
+
+# 각 뉴런이 네트워크에서 얼마나 큰 역할을 하는지 예측
+def update_utility(activations, utility, beta, model):
+    """EMA: mean(|activation|) * mean(|outgoing weight|), per hidden neuron."""
+    
+    # 모든 linear, relu 레이어 저장
+    # linear = fc1, fc2 etc, relu = relu1, relu2 etc
+    linear = [m for m in model.modules() if isinstance(m, nn.Linear)]
+    relu_names = [n for n, m in model.named_modules() if isinstance(m, nn.ReLU)]
+    for i, name in enumerate(relu_names):
+        if name not in activations:
+            continue
+        score = activations[name].abs().mean(0) * linear[i + 1].weight.detach().abs().mean(0)
+        if name not in utility:
+            utility[name] = score.detach().clone()
+        else:
+            # 지수 이동 평균
+            utility[name].mul_(beta).add_(score.detach(), alpha=1-beta)
 
 def update_utility(activations, utility, beta):
     """

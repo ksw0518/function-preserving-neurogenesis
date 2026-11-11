@@ -14,8 +14,7 @@ def register_hooks(model, target_layers, store):
         hooks.append(layer.register_forward_hook(hook_fn(name, store)))
     return hooks
 
-
-def detect_dead_neuron(model, dataloader, near_dead_threshold=0.9, use_near_dead=False):
+def detect_dead_neuron(model, dataloader, near_dead_threshold=0.9, use_near_dead=False, perm=None, return_stats=False):
     """
     반환: 층별 dead 뉴런 인덱스 리스트 (regrow의 dead_idx 형식)
         예) [[2, 17, 45], [8]] → 0번 층 뉴런 2,17,45 / 1번 층 뉴런 8
@@ -55,6 +54,10 @@ def detect_dead_neuron(model, dataloader, near_dead_threshold=0.9, use_near_dead
             model.train()  # 원래 모드로 복구
 
     dead_idx = []
+    stats = {}
+
+    total_dead = 0
+    total_neurons = 0
     for name in target_layers:  # target_layers 순서대로 → 바깥 인덱스 = 층 번호
         zero_ratio = zero_counts[name].float() / total_samples
 
@@ -63,11 +66,30 @@ def detect_dead_neuron(model, dataloader, near_dead_threshold=0.9, use_near_dead
         else:
             dead = torch.where(zero_ratio == 1.0)[0]
 
-        print(f"[{name}] 뉴런 {len(zero_ratio)}개 중 dead {len(dead)}개, "
-              f"평균 zero ratio {zero_ratio.mean().item() * 100:.2f}%")
+        #print(f"[{name}] 뉴런 {len(zero_ratio)}개 중 dead {len(dead)}개, "
+              #f"평균 zero ratio {zero_ratio.mean().item() * 100:.2f}%")
 
         dead_idx.append(dead.tolist())  # 텐서 → 파이썬 리스트
+        
+        dead_count = len(dead)
+        neuron_count = len(zero_ratio)
 
+        stats[name] = {
+            "dead_count": dead_count,
+            "neuron_count": neuron_count,
+            "mean_zero_ratio": zero_ratio.mean().item()
+        }
+
+        total_dead += dead_count
+        total_neurons += neuron_count
+
+    stats["overall_dead_ratio"] = (
+        total_dead / total_neurons if total_neurons > 0 else 0
+    )
+
+    if return_stats:
+        return dead_idx, stats
+    
     return dead_idx
 
 if __name__ == '__main__':
