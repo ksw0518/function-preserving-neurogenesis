@@ -9,23 +9,6 @@ def permute(images, perm):
     """
     return images.flatten(1).index_select(1, perm).reshape_as(images)
 
-# 각 뉴런이 네트워크에서 얼마나 큰 역할을 하는지 예측
-def update_utility(activations, utility, beta, model):
-    """EMA: mean(|activation|) * mean(|outgoing weight|), per hidden neuron."""
-    
-    # 모든 linear, relu 레이어 저장
-    # linear = fc1, fc2 etc, relu = relu1, relu2 etc
-    linear = [m for m in model.modules() if isinstance(m, nn.Linear)]
-    relu_names = [n for n, m in model.named_modules() if isinstance(m, nn.ReLU)]
-    for i, name in enumerate(relu_names):
-        if name not in activations:
-            continue
-        score = activations[name].abs().mean(0) * linear[i + 1].weight.detach().abs().mean(0)
-        if name not in utility:
-            utility[name] = score.detach().clone()
-        else:
-            # 지수 이동 평균
-            utility[name].mul_(beta).add_(score.detach(), alpha=1-beta)
 
 def update_utility(activations, utility, beta):
     """
@@ -34,11 +17,14 @@ def update_utility(activations, utility, beta):
     activations: 훅에서 저장, utility: 누적 점수, beta: EMA 계수
     """
     for name, acti in activations.items():
+        # 특정 뉴런의 activation의 평균을 사용.
         batch_score = acti.mean(dim = 0)
 
+        # 처음 layer에 대해서 계산할 때에 0으로 초기화
         if name not in utility:
             utility[name] = torch.zeros_like(batch_score)
 
+        # 지수 이동 평균. 현재 score와 기존 utility 값을 조화하여 누적시킴
         utility[name] = beta * utility[name] + (1 - beta) * batch_score
 
 
@@ -61,10 +47,11 @@ def train(model, dataloader, criterion, optimizer, perm=None, log=None, on_step=
 
     for images, labels in dataloader:
 
-        # TODO: perm이 None이 아니면 permute 적용 (.to(device) 전에 하는 걸 추천)
+        # perm에 따라 이미지 조절
         if perm is not None:
             images = permute(images, perm)
 
+        # gpu(또는 cpu)로 전송
         images = images.to(device)
         labels = labels.to(device)
 
@@ -84,6 +71,8 @@ def train(model, dataloader, criterion, optimizer, perm=None, log=None, on_step=
         optimizer.step()
 
         # 통계 계산
+
+        
         total_loss += loss.item() * images.size(0)
 
         predictions = outputs.argmax(dim=1)
@@ -92,9 +81,11 @@ def train(model, dataloader, criterion, optimizer, perm=None, log=None, on_step=
         correct += batch_correct
         total += labels.size(0)
 
+        # 매 step별 정확도 기록
         if log is not None:
             log['step_acc'].append(batch_correct / labels.size(0))
 
+        # 스탭별로 on_step함수 호출 (age, utility 업데이트)
         if on_step is not None:
             on_step()
 
@@ -120,7 +111,7 @@ def evaluate(model, dataloader, criterion, perm=None):
 
         for images, labels in dataloader:
 
-            # TODO: perm이 None이 아니면 permute 적용
+            # perm이 None이 아니면 permute 적용
             if perm is not None:
                 images = permute(images, perm)
 

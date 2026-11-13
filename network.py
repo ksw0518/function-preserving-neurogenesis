@@ -20,13 +20,13 @@ def set_device():
     return device
 
 
-
+# train_dataset, test_dataset, train_loader, test_loader
 def load_data():
     # 이미지 전처리
     transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.1307,), (0.3081,))
-])
+    ])
 
     # MNIST 학습 데이터
     train_dataset = torchvision.datasets.MNIST(
@@ -34,7 +34,7 @@ def load_data():
     train=True,
     download=True,
     transform=transform
-)
+    )
 
     # MNIST 테스트 데이터
     test_dataset = torchvision.datasets.MNIST(
@@ -42,20 +42,20 @@ def load_data():
     train=False,
     download=True,
     transform=transform
-)
+    )
 
     # 데이터를 Batch 단위로 묶기
     train_loader = DataLoader(
     train_dataset,
     batch_size=128,
     shuffle=True
-)
+    )
 
     test_loader = DataLoader(
     test_dataset,
     batch_size=128,
     shuffle=False
-)
+    )
 
     images, labels = next(iter(train_loader))
 
@@ -66,7 +66,7 @@ def load_data():
     return train_dataset, test_dataset, train_loader, test_loader
 
 
-class MyNetwork(nn.Module):
+class MainNetwork(nn.Module):
 
     def __init__(self):
         super().__init__()
@@ -95,7 +95,7 @@ if __name__ == '__main__':
     device = set_device()
     train_dataset, test_dataset, train_loader, test_loader = load_data()
 
-    model = MyNetwork().to(device)
+    model = MainNetwork().to(device)
 
     criterion = nn.CrossEntropyLoss()
 
