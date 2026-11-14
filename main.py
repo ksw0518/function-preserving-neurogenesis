@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
 import pandas as pd
+import json
 
 import network as net
 import train_net as tn
@@ -16,21 +17,6 @@ import regrow as rg
 # python -m venv venv
 # .\venv\Scripts\Activate.ps1
 
-# ===== 실험 설정 (통제 변수는 전부 여기서만 바꿈) =====
-CONFIG = {
-    'methods': ['ours'],#원래 'standard', 'cbp', 'rejuvenation', 'ours', 'ours_no_noise'
-    'seeds': [0], #원래 0,1,2
-    'num_tasks': 30,          # Permuted MNIST 과제 수 (계획서: 수백~수천, 일단 작게 시작)
-    'epochs_per_task': 5,
-    'lr': 0.001,
-    'p': 0.05,                # 하위 p% 제거 (1, 5, 10%)
-    'noise_std': 0.02,        # 대칭 깨기 노이즈 표준편차
-    'beta': 0.99,             # utility EMA 계수
-    'maturity': 100,          # 이 step 이상 산 뉴런만 제거 후보
-    'k': 50,                  # 재생성 전후 비교 구간 (step)
-    'near_dead_threshold' : 0.99,
-    'regrow_until_ratio': 0.8,
-}
 
 # 랜덤 시드 설정
 def set_seed(seed):
@@ -122,6 +108,8 @@ def select_low_utility(
         mature_indices = torch.where(mature)[0]
         # dead 뉴런으로 검출
         if use_dead:
+            if dead_idx is None:
+                raise ValueError('use_dead=True면 dead_idx를 넘겨야 함')
             # 기준 age 이상 뉴런들 중 dead 뉴런 선택
             dead = torch.zeros_like(mature, dtype=torch.bool)
             dead[dead_idx[layer_idx]] = True
@@ -447,4 +435,6 @@ def main():
 
 
 if __name__ == '__main__':
+    with open('config.json') as f:
+        CONFIG = json.load(f)
     main()
