@@ -18,17 +18,18 @@ import regrow as rg
 
 # ===== 실험 설정 (통제 변수는 전부 여기서만 바꿈) =====
 CONFIG = {
-    'methods': ['standard'],#원래 'standard', 'cbp', 'rejuvenation', 'ours', 'ours_no_noise'
+    'methods': ['ours'],#원래 'standard', 'cbp', 'rejuvenation', 'ours', 'ours_no_noise'
     'seeds': [0], #원래 0,1,2
-    'num_tasks': 2,          # Permuted MNIST 과제 수 (계획서: 수백~수천, 일단 작게 시작)
-    'epochs_per_task': 2,
+    'num_tasks': 30,          # Permuted MNIST 과제 수 (계획서: 수백~수천, 일단 작게 시작)
+    'epochs_per_task': 5,
     'lr': 0.001,
     'p': 0.05,                # 하위 p% 제거 (1, 5, 10%)
-    'noise_std': 0.01,        # 대칭 깨기 노이즈 표준편차
+    'noise_std': 0.02,        # 대칭 깨기 노이즈 표준편차
     'beta': 0.99,             # utility EMA 계수
     'maturity': 100,          # 이 step 이상 산 뉴런만 제거 후보
     'k': 50,                  # 재생성 전후 비교 구간 (step)
-    'near_dead_threshold' : 0.95
+    'near_dead_threshold' : 0.99,
+    'regrow_until_ratio': 0.8,
 }
 
 # 랜덤 시드 설정
@@ -170,11 +171,23 @@ def select_low_utility(
     return targets, sources
 
 
-def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_loader, perm, dead_idx_calculated = None):
+def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_loader, perm, test_loader = None, criterion = None, dead_idx_calculated = None):
     """
     매 epoch 끝: utility 하위 p% 진단 → 방법별 재생성 (계획서 1, 2)
     재생성한 step을 log['regrow_steps']에 기록 (지표 1에서 전후 k step 자를 때 사용)
     """
+    # total_steps = (
+    #     cfg["num_tasks"]
+    #     * cfg["epochs_per_task"]
+    #     * len(train_loader)
+    # )
+    # regrow_end_step = int(
+    #     total_steps * cfg["regrow_until_ratio"]
+    # )
+    # if log["global_step"] >= regrow_end_step:
+    #     return model, optimizer
+    
+    
     if method == 'standard':
         return model, optimizer
     
@@ -216,11 +229,63 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
                     f"Target age: {age[name][target].item()}"
                 )
         
-        # 모델 뉴런 삭제/분화
-        regrown = rg.regrow(
-            model, dead_list, source_list,
-            cfg["noise_std"]
-        )
+        if (criterion != None) and (test_loader != None):
+            # ==================================
+            # 1. 분화 직전 정확도 측정
+            # ==================================
+            _, acc_before = tn.evaluate(
+                model,
+                test_loader,
+                criterion,
+                perm=perm
+            )
+        
+            # ==================================
+            # 2. 뉴런 분화
+            # ==================================
+            regrown = rg.regrow(
+                model,
+                dead_list,
+                source_list,
+                cfg["noise_std"]
+            )
+        if (criterion != None) and (test_loader != None):
+
+            # ==================================
+            # 3. 분화 직후 정확도 측정
+            # ==================================
+            _, acc_after = tn.evaluate(
+                regrown,
+                test_loader,
+                criterion,
+                perm=perm
+            )
+
+            # ==================================
+            # 4. 정확도 변화량 계산
+            # ==================================
+            delta = (acc_after - acc_before) * 100
+
+            print(
+                f"\n[REGROW ACCURACY] Step {log['global_step']}"
+            )
+            print(f"Before : {acc_before * 100:.2f}%")
+            print(f"After  : {acc_after * 100:.2f}%")
+            print(f"Change : {delta:+.2f}%p")
+
+            # 정확도 로그 저장
+            # log["regrow_accuracy"].append({
+            #     "step": log["global_step"],
+            #     "before": acc_before,
+            #     "after": acc_after,
+            #     "delta": delta
+            # })
+
+        
+
+        # ==================================
+        # 5. Optimizer 재생성
+        # ==================================
         optimizer = optim.Adam(
             regrown.parameters(),
             lr=cfg["lr"]
@@ -298,7 +363,7 @@ def run(method, seed, cfg, train_loader, test_loader):
             log["task_permutations"].append(perm.tolist())
             dead_idx = []
             # 설정된 태스크별 epoch 수만큼 에포크 진행
-            for _ in range(cfg["epochs_per_task"]):
+            for epoch in range(cfg["epochs_per_task"]):
 
                 def on_step():
                     # 매 step마다 utility, age 업데이트.
@@ -327,10 +392,11 @@ def run(method, seed, cfg, train_loader, test_loader):
 
                 old_model = model
                 # 뉴런 삭제, 재생성
-                model, optimizer = diagnose_and_regrow(
-                method, model, utility, age, optimizer,
-                cfg, log, train_loader, perm, dead_idx
-                )
+                if epoch < cfg["epochs_per_task"]:
+                    model, optimizer = diagnose_and_regrow(
+                    method, model, utility, age, optimizer,
+                    cfg, log, train_loader, perm, criterion=criterion, test_loader= test_loader, dead_idx_calculated=dead_idx
+                    )
                 if model is not old_model:
                     # 기존 모델에 등록했던 hook 제거
                     for h in handles:
