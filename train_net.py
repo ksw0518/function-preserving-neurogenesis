@@ -131,5 +131,5 @@ def evaluate(model, dataloader, criterion, perm=None):
 
     avg_loss = total_loss / total
     accuracy = correct / total
-
+    # print(accuracy)  # asdfasdfasdf
     return avg_loss, accuracy

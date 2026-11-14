@@ -4,6 +4,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import matplotlib.pyplot as plt
+import pandas as pd
 
 import network as net
 import train_net as tn
@@ -16,7 +18,7 @@ import regrow as rg
 
 # ===== 실험 설정 (통제 변수는 전부 여기서만 바꿈) =====
 CONFIG = {
-    'methods': ['ours'],#원래 'standard', 'cbp', 'rejuvenation', 'ours', 'ours_no_noise'
+    'methods': ['standard'],#원래 'standard', 'cbp', 'rejuvenation', 'ours', 'ours_no_noise'
     'seeds': [0], #원래 0,1,2
     'num_tasks': 2,          # Permuted MNIST 과제 수 (계획서: 수백~수천, 일단 작게 시작)
     'epochs_per_task': 2,
@@ -61,6 +63,7 @@ def evaluate_all_tasks(model, test_loader, task_permutations, device, criterion)
         )
 
     return accuracies
+
 
 # 모델의 activation을 추적할 수 있도록 hook설정
 def attach_activation_hooks(model, store):
@@ -342,13 +345,20 @@ def run(method, seed, cfg, train_loader, test_loader):
             _, acc = tn.evaluate(model, test_loader, criterion, perm=perm)
             log["task_acc"].append(acc)
             print(f"[{method} | seed {seed}] task {task+1}/{cfg['num_tasks']} acc {acc*100:.2f}%")
+            
     finally:
         # handle 삭제
         for h in handles:
             h.remove()
+
+    data = pd.DataFrame(log['task_acc'])
+    plt.plot(data)
+    plt.xlabel('Step')
+    plt.ylabel('Accuracy')
+    plt.show()
+    
+    # print(log) # aaaaaaaaaaaaaaaaaaaaa
     return log
-
-
 
 
 def main():
