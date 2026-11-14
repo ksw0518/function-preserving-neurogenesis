@@ -1,4 +1,4 @@
 data/
 __pycache__/
 .vscode/
-result.json
+results.json
