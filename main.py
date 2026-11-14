@@ -108,6 +108,8 @@ def select_low_utility(
         mature_indices = torch.where(mature)[0]
         # dead 뉴런으로 검출
         if use_dead:
+            if dead_idx is None:
+                raise ValueError('use_dead=True면 dead_idx를 넘겨야 함')
             # 기준 age 이상 뉴런들 중 dead 뉴런 선택
             dead = torch.zeros_like(mature, dtype=torch.bool)
             dead[dead_idx[layer_idx]] = True
