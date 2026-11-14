@@ -1,0 +1,13 @@
+{
+    "methods": ["standard"],
+    "seeds": [0],
+    "num_tasks": 2,
+    "epochs_per_task": 2,
+    "lr": 0.001,
+    "p": 0.05,
+    "noise_std": 0.01,
+    "beta": 0.99,
+    "maturity": 100,
+    "k": 50,
+    "near_dead_threshold" : 0.95
+}
