@@ -392,7 +392,7 @@ def run(method, seed, cfg, train_loader, test_loader):
 
                 old_model = model
                 # 뉴런 삭제, 재생성
-                if epoch < cfg["epochs_per_task"]:
+                if epoch <= cfg["epochs_per_task"] * 0.8:
                     model, optimizer = diagnose_and_regrow(
                     method, model, utility, age, optimizer,
                     cfg, log, train_loader, perm, criterion=criterion, test_loader= test_loader, dead_idx_calculated=dead_idx
