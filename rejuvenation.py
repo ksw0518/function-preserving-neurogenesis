@@ -273,11 +273,10 @@ def run_rejuvenation(
             accuracy_before=acc_before, accuracy_after=acc_after,
             delta_percentage_points=delta,
         )
-        print(
-            f"[REJUVENATION] Step {log['global_step']} | "
-            f"{acc_before * 100:.2f}% -> {acc_after * 100:.2f}% "
-            f"({delta:+.2f}%p)"
-        )
+        print(f"\n[REGROW ACCURACY] Step {log['global_step']}")
+        print(f"Before : {acc_before * 100:.2f}%")
+        print(f"After  : {acc_after * 100:.2f}%")
+        print(f"Change : {delta:+.2f}%p")
 
     log["regrow_steps"].append(log["global_step"])
     log["regrow_count"].append(info["removed_count"])
