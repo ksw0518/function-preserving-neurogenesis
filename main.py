@@ -214,17 +214,17 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
 
         if total_regrown == 0:
             return model, optimizer
-        # 뉴런 교체 정보 출력
-        for name in targets:
-            for target, source in zip(targets[name], sources[name]):
-                print(
-                    f"[REGROW] Layer: {name} | "
-                    f"Dead neuron: {target} | "
-                    f"Cloned from: {source} | "
-                    f"Target utility: {utility[name][target].item():.6f} | "
-                    f"Source utility: {utility[name][source].item():.6f} | "
-                    f"Target age: {age[name][target].item()}"
-                )
+        # # 뉴런 교체 정보 출력
+        # for name in targets:
+        #     for target, source in zip(targets[name], sources[name]):
+        #         print(
+        #             f"[REGROW] Layer: {name} | "
+        #             f"Dead neuron: {target} | "
+        #             f"Cloned from: {source} | "
+        #             f"Target utility: {utility[name][target].item():.6f} | "
+        #             f"Source utility: {utility[name][source].item():.6f} | "
+        #             f"Target age: {age[name][target].item()}"
+        #         )
         
         if (criterion != None) and (test_loader != None):
             # 1. 분화 직전 정확도 측정
