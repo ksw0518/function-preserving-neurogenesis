@@ -12,6 +12,7 @@ import network as net
 import train_net as tn
 import detect_dead as dt
 import regrow as rg
+import rejuvenation as nr
 
 # enable venv
 # python -m venv venv
@@ -178,13 +179,17 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
     
     if method == 'standard':
         return model, optimizer
-    
-    
 
+    elif method == 'rejuvenation':
+        return nr.run_rejuvenation(
+            model, utility, age, optimizer,
+            cfg, log, train_loader, perm,
+            test_loader=test_loader,
+            criterion=criterion,
+            dead_idx_calculated=dead_idx_calculated,
+        )
     
     elif method == 'ours':
-        
-        
         # dead idx가 전달되었다면 그대로 사용
         # 전달되지 않았다면 새로 계산
         if dead_idx_calculated is None:
@@ -196,7 +201,6 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
             )
         else:
             dead_idx = dead_idx_calculated
-        
         
         targets, sources = select_low_utility(
             utility,
