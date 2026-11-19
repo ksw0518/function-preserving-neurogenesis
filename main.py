@@ -26,9 +26,9 @@ def set_seed(seed):
 
 
 # permuted mnist 용 픽셀 섞기
-def make_permutation(num_pixels=784):
+def make_permutation(num_pixels=784, generator = None):
     """과제 하나에 쓸 고정된 픽셀 순서"""
-    return torch.randperm(num_pixels)
+    return torch.randperm(num_pixels, generator=generator)
 
 
 def evaluate_all_tasks(model, test_loader, task_permutations, device, criterion):
@@ -139,7 +139,7 @@ def select_low_utility(
         ]
         # score 기준으로 내림차순 정리
         source_candidates.sort(
-            key=lambda i: scores[i],
+            key=lambda i: scores[i].item(),
             reverse=True
         )
 
@@ -147,7 +147,6 @@ def select_low_utility(
         top_p = 0.3 
         
         # 상위 p퍼센트중 target 개수만큼 선택
-        random.seed(26187)
         top_pool_size = max(len(candidates), int(len(source_candidates) * source_pool_size))
 
         # 상위 n%에 해당하는 뉴런들만 추려냄
@@ -156,6 +155,7 @@ def select_low_utility(
         # 4. target 개수와 동일하게 맞추되, 상위 풀에서 랜덤으로 선택
         target_count = len(candidates)
         sources[name] = random.sample(top_pool, min(target_count, len(top_pool)))
+        targets[name] = candidates[:len(sources[name])]
     return targets, sources
 
 
@@ -187,8 +187,15 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
         
         # dead idx가 전달되었다면 그대로 사용
         # 전달되지 않았다면 새로 계산
-        dead_idx = dt.detect_dead_neuron(
-        model, train_loader, perm=perm) if dead_idx_calculated == None else dead_idx_calculated
+        if dead_idx_calculated is None:
+            dead_idx = dt.detect_dead_neuron(
+                model, train_loader,
+                near_dead_threshold=cfg['near_dead_threshold'],
+                use_near_dead=True,
+                perm=perm
+            )
+        else:
+            dead_idx = dead_idx_calculated
         
         
         targets, sources = select_low_utility(
@@ -203,8 +210,10 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
         names = list(utility.keys())
         dead_list = [targets[name] for name in names]
         source_list = [sources[name] for name in names]
-        
-        
+        total_regrown = sum(len(x) for x in dead_list)
+
+        if total_regrown == 0:
+            return model, optimizer
         # 뉴런 교체 정보 출력
         for name in targets:
             for target, source in zip(targets[name], sources[name]):
@@ -218,9 +227,7 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
                 )
         
         if (criterion != None) and (test_loader != None):
-            # ==================================
             # 1. 분화 직전 정확도 측정
-            # ==================================
             _, acc_before = tn.evaluate(
                 model,
                 test_loader,
@@ -228,20 +235,20 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
                 perm=perm
             )
         
-            # ==================================
-            # 2. 뉴런 분화
-            # ==================================
-            regrown = rg.regrow(
-                model,
-                dead_list,
-                source_list,
-                cfg["noise_std"]
-            )
+        # ==================================
+        # 2. 뉴런 분화
+        # ==================================
+        regrown = rg.regrow(
+            model,
+            dead_list,
+            source_list,
+            cfg["noise_std"], 
+            inplace = True,
+            optimizer = optimizer
+        )
         if (criterion != None) and (test_loader != None):
 
-            # ==================================
             # 3. 분화 직후 정확도 측정
-            # ==================================
             _, acc_after = tn.evaluate(
                 regrown,
                 test_loader,
@@ -261,25 +268,7 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
             print(f"After  : {acc_after * 100:.2f}%")
             print(f"Change : {delta:+.2f}%p")
 
-            # 정확도 로그 저장
-            # log["regrow_accuracy"].append({
-            #     "step": log["global_step"],
-            #     "before": acc_before,
-            #     "after": acc_after,
-            #     "delta": delta
-            # })
 
-        
-
-        # ==================================
-        # 5. Optimizer 재생성
-        # ==================================
-        optimizer = optim.Adam(
-            regrown.parameters(),
-            lr=cfg["lr"]
-        )
-
-      
         # 새로 생긴 뉴런 지표 초기화
         for name, indices in targets.items():
             if indices:
@@ -293,20 +282,8 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
         log["regrow_by_layer"].append(targets)
 
         return regrown, optimizer
-    return model;
+    raise ValueError(f"{method} 알 수 없음. 오타 확인 필요")
     
-    
-
-    # TODO: utility 하위 p% 뉴런 → dead_idx, 상위 뉴런 → neurons_to_clone
-    #       형식: [[0번 층 뉴런들], [1번 층 뉴런들]] (같은 층끼리 개수 같게)
-    # TODO: method별 분기
-    #   'cbp'           → 입력 가중치 초기 분포에서 재샘플, 출력 가중치 0
-    #   'rejuvenation'  → NR 방식
-    #   'ours'          → rg.regrow(..., noise_std=cfg['noise_std'])
-    #   'ours_no_noise' → rg.regrow(..., noise_std=0.0)
-    # 주의: rg.regrow는 deepcopy한 새 모델을 반환 → optimizer가 옛 모델을 가리킴
-    #       in-place 버전을 쓰거나, optimizer 처리 방식을 5개 조건 모두 동일하게 맞출 것
-    # TODO: 재생성한 현재 step 수를 log['regrow_steps']에 append
 
 
 
@@ -320,6 +297,10 @@ def run(method, seed, cfg, train_loader, test_loader):
     optimizer = optim.Adam(model.parameters(), lr=cfg['lr'])
     criterion = nn.CrossEntropyLoss()
 
+    # permutation을 분리된 generator로 생성하여 과제 순서 유지
+    perm_gen = torch.Generator()
+    perm_gen.manual_seed(seed)
+    
     # utility, age 초기화
     utility, age = initialize_tracking(model)
 
@@ -335,39 +316,45 @@ def run(method, seed, cfg, train_loader, test_loader):
         "regrow_count": [],
         "regrow_by_layer": [], 
         "task_acc": [], 
+        "first_epoch_acc": [],
         "dead_ratio": [],
         "dead_ratio_by_layer": [],
         "task_permutations": [],
         "global_step": 0,
+        
 
     }
     try:
         # 설정 상의 num_task 설정값만큼 반복
         for task in range(cfg["num_tasks"]):
             # 새로운 permutation (태스크) 생성
-            perm = make_permutation()
+            perm = make_permutation(generator=perm_gen)
 
             # permutation 저장하여 실험 재현 가능하게
             log["task_permutations"].append(perm.tolist())
             dead_idx = []
+            
+            def on_step():
+                # 매 step마다 utility, age 업데이트.
+                tn.update_utility(activation_store, utility, cfg["beta"])
+                for name in age:
+                    age[name].add_(1)
+                log["global_step"] += 1
+ 
             # 설정된 태스크별 epoch 수만큼 에포크 진행
             for epoch in range(cfg["epochs_per_task"]):
 
-                def on_step():
-                    # 매 step마다 utility, age 업데이트.
-                    tn.update_utility(activation_store, utility, cfg["beta"])
-                    for name in age:
-                        age[name].add_(1)
-                    log["global_step"] += 1
- 
                 # 일반 역전파
-                tn.train(model, train_loader, criterion, optimizer,
+                _, train_acc = tn.train(model, train_loader, criterion, optimizer,
                         perm=perm, log=log, on_step=on_step)
                 
-                
+                if epoch == 0:
+                    log["first_epoch_acc"].append(train_acc)
+                    
                 # dead 뉴런 검출
                 dead_idx, stats = dt.detect_dead_neuron(
-                    model, train_loader, near_dead_threshold= cfg['near_dead_threshold'], use_near_dead= True, perm=perm, return_stats=True
+                    model, train_loader, near_dead_threshold= cfg['near_dead_threshold'], 
+                    use_near_dead= True, perm=perm, return_stats=True
                 )
                 
                 # dead ratio 를 로그에 저장
@@ -398,7 +385,7 @@ def run(method, seed, cfg, train_loader, test_loader):
             # 정확도 측정
             _, acc = tn.evaluate(model, test_loader, criterion, perm=perm)
             log["task_acc"].append(acc)
-            print(f"[{method} | seed {seed}] task {task+1}/{cfg['num_tasks']} acc {acc*100:.2f}%")
+            print(f"[{method} | seed {seed}] task {task+1}/{cfg['num_tasks']} acc {acc*100:.2f}% | first-epoch train acc {log['first_epoch_acc'][-1]*100:.2f}%")
             
     finally:
         # handle 삭제

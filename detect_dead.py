@@ -47,6 +47,8 @@ def detect_dead_neuron(model, dataloader, near_dead_threshold=0.9, use_near_dead
         # 역전파 안쓸것이므로. (no_grad안하면 역전파 위해 정보를 자동 수집함)
         with torch.no_grad():
             for images, labels in dataloader:
+                if perm is not None:
+                    images = images.flatten(1).index_select(1, perm).reshape_as(images)
                 images = images.to(device)
                 
                 # dataset 크기만큼 total sample 증가시킴

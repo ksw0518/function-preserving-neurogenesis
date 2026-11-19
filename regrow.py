@@ -4,8 +4,37 @@ import torch.nn as nn
 import torch.optim as optim
 import copy
 
+def reset_optimizer_state(optimizer, model, dead_idx, neurons_to_clone):
+    """
+    Adam 상태(exp_avg, exp_avg_sq)를 재생성으로 값이 바뀐 가중치 부분만 0으로 초기화.
+    바뀐 부분 = 대상/소스 뉴런의 입력 가중치(행)·편향, 그리고 다음 층에서 그 뉴런으로부터 나가는 가중치(열).
+    optimizer를 새로 만들지 않으므로 나머지 파라미터의 모멘텀은 유지됨.
+    """
+    layers = [m for m in model.modules() if isinstance(m, nn.Linear)]
 
-def regrow(model, dead_idx: list[list], neurons_to_clone: list[list], noise_std: float = 0.01):
+    def zero_state(param, index, dim):
+        state = optimizer.state.get(param, {})
+        for key in ('exp_avg', 'exp_avg_sq'):
+            buf = state.get(key)
+            if buf is None:
+                continue
+            if dim == 0:
+                buf[index] = 0
+            else:
+                buf[:, index] = 0
+
+    for layer_idx, (dead_list, src_list) in enumerate(zip(dead_idx, neurons_to_clone)):
+        changed = sorted(set(dead_list) | set(src_list))
+        if not changed:
+            continue
+        layer = layers[layer_idx]
+        next_layer = layers[layer_idx + 1]
+        zero_state(layer.weight, changed, 0)
+        zero_state(layer.bias, changed, 0)
+        zero_state(next_layer.weight, changed, 1)
+
+
+def regrow(model, dead_idx: list[list], neurons_to_clone: list[list], noise_std: float = 0.01, inplace: bool = False, optimizer=None):
     """
     뉴런 재생성 함수,
     dead_idx와 neurons_to_clone는 2차원 array(예: [[0, 1], [0, 1]]),
@@ -28,8 +57,7 @@ def regrow(model, dead_idx: list[list], neurons_to_clone: list[list], noise_std:
             dead_neurons.append(layer_dead)
 
     # 원본 model은 보존하고 복사본만 수정 (함수 인자로 넘긴 객체를 직접 고치면 원본도 바뀜)
-    regrown = copy.deepcopy(model)
-    # 위 layers는 원본 model의 층이므로, 복사본 기준으로 다시 모음
+    regrown = model if inplace else copy.deepcopy(model)    # 위 layers는 원본 model의 층이므로, 복사본 기준으로 다시 모음
     layers = [m for m in regrown.modules() if isinstance(m, nn.Linear)]
 
     # 가중치를 직접 수정할 땐 학습 추적을 꺼야 에러가 안 남
@@ -58,7 +86,8 @@ def regrow(model, dead_idx: list[list], neurons_to_clone: list[list], noise_std:
                 x = torch.randn_like(layer.weight[s]) * noise_std  # 평균 0, 표준편차 noise_std
                 layer.weight[s] += x
                 layer.weight[d] -= x
-
+    if optimizer is not None:
+            reset_optimizer_state(optimizer, regrown, dead_idx, neurons_to_clone)
     return regrown
 
 
@@ -90,7 +119,7 @@ if __name__ == '__main__':
     import network as net
     device = net.set_device()
     train_dataset, test_dataset, train_loader, test_loader = net.load_data()
-    model = net.MyNetwork().to(device)
+    model = net.MainNetwork().to(device)
 
     criterion = nn.CrossEntropyLoss()
 
