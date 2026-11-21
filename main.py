@@ -5,8 +5,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
+import koreanize_matplotlib
 import pandas as pd
 import json
+import os
+from datetime import datetime
 
 import network as net
 import train_net as tn
@@ -397,20 +400,28 @@ def run(method, seed, cfg, train_loader, test_loader):
             h.remove()
 
     data = pd.DataFrame(log['task_acc'])
+    plt.figure()
     plt.plot(data)
-    plt.xlabel('Step')
-    plt.ylabel('Accuracy')
-    plt.show()
+    plt.title(f'{method} (seed {seed}) - Permuted MNIST task accuracy')
+    plt.xlabel('Task')
+    plt.ylabel('Test Accuracy')
+    os.makedirs('figures', exist_ok=True)
+    plt.savefig(f'figures/{method}_seed{seed}.svg')
+    plt.close()
     
-    # print(log) # aaaaaaaaaaaaaaaaaaaaa
     return log
 
 
 def main():
 
-    # MNIST 데이터 로더 블러오기
+    # MNIST 데이터 로더 불러오기
     _, _, train_loader, test_loader = net.load_data()
 
+    # 실행할 때마다 따로 저장 (시험 실행이 본실험 결과를 덮어쓰지 않게)
+    os.makedirs('results', exist_ok=True)
+    stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    tag = f"{'-'.join(CONFIG['methods'])}_t{CONFIG['num_tasks']}_e{CONFIG['epochs_per_task']}"
+    path = f'results/{stamp}_{tag}.json'
 
     # result 에 각 method, seed별 로그 저장.
     results = {}
@@ -420,9 +431,11 @@ def main():
                 method, seed, CONFIG, train_loader, test_loader
             )
 
-    # 그래프·표는 이 파일 따로 불러서 그림 (학습과 시각화 분리)
-    with open('results.json', 'w') as f:
-        json.dump({'config': CONFIG, 'results': results}, f)
+            # run 하나 끝날 때마다 저장 → 중간에 멈춰도 끝난 것까지는 남음
+            # 그래프·표는 이 파일 따로 불러서 그림 (학습과 시각화 분리)
+            with open(path, 'w') as f:
+                json.dump({'config': CONFIG, 'results': results}, f)
+            print(f'저장: {path} ({method}_seed{seed} 완료)')
 
 
 if __name__ == '__main__':
