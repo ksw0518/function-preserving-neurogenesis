@@ -163,6 +163,52 @@ def select_low_utility(
     return targets, sources
 
 
+def cbp_reinitialize(model, utility, age, optimizer, cfg):
+    """
+    Continual Backpropagation (Dohare et al., 2024) 방식 재초기화.
+    - 기여 utility = 활성값 EMA × 나가는 가중치 절댓값 합
+    - 성숙(age >= maturity) 뉴런 중 utility 하위 p%를 선택
+    - 입력 가중치: nn.Linear 초기 분포(U[-1/sqrt(fan_in), 1/sqrt(fan_in)])에서 새로 뽑음
+    - 편향: 0, 나가는 가중치: 0 → 재초기화 직후 출력에 영향 없음
+    - 바뀐 부분의 Adam 상태는 0으로 리셋 (ours와 같은 처리)
+    """
+    layers = [m for m in model.modules() if isinstance(m, nn.Linear)]
+    names = list(utility.keys())
+    targets = {}
+
+    with torch.no_grad():
+        for layer_idx, name in enumerate(names):
+            layer = layers[layer_idx]
+            next_layer = layers[layer_idx + 1]
+
+            # 기여 utility: 활성값 EMA × 다음 층으로 나가는 가중치 절댓값 합
+            contribution = utility[name] * next_layer.weight.abs().sum(dim=0)
+
+            mature_indices = torch.where(age[name] >= cfg["maturity"])[0]
+            if len(mature_indices) == 0:
+                targets[name] = []
+                continue
+
+            k = min(max(1, int(len(mature_indices) * cfg["p"])), len(mature_indices))
+            _, low_idx = torch.topk(contribution[mature_indices], k=k, largest=False)
+            chosen = mature_indices[low_idx].tolist()
+            targets[name] = chosen
+
+            # 입력 가중치 재샘플, 편향 0, 나가는 가중치 0
+            bound = 1 / (layer.in_features ** 0.5)
+            layer.weight[chosen] = torch.empty(
+                len(chosen), layer.in_features, device=layer.weight.device
+            ).uniform_(-bound, bound)
+            layer.bias[chosen] = 0
+            next_layer.weight[:, chosen] = 0
+
+    # Adam 상태 리셋 (소스 뉴런이 없으므로 빈 리스트 전달)
+    dead_list = [targets[name] for name in names]
+    rg.reset_optimizer_state(optimizer, model, dead_list, [[] for _ in names])
+
+    return targets
+
+
 def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_loader, perm, test_loader = None, criterion = None, dead_idx_calculated = None):
     """
     매 epoch 끝: utility 하위 p% 진단 → 방법별 재생성 (계획서 1, 2)
@@ -191,8 +237,37 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
             criterion=criterion,
             dead_idx_calculated=dead_idx_calculated,
         )
+    elif method == 'cbp':
+        if (criterion is not None) and (test_loader is not None):
+            _, acc_before = tn.evaluate(model, test_loader, criterion, perm=perm)
+
+        targets = cbp_reinitialize(model, utility, age, optimizer, cfg)
+        total = sum(len(x) for x in targets.values())
+        if total == 0:
+            return model, optimizer
+
+        if (criterion is not None) and (test_loader is not None):
+            _, acc_after = tn.evaluate(model, test_loader, criterion, perm=perm)
+            delta = (acc_after - acc_before) * 100
+            print(f"\n[REGROW ACCURACY] Step {log['global_step']}")
+            print(f"Before : {acc_before * 100:.2f}%")
+            print(f"After  : {acc_after * 100:.2f}%")
+            print(f"Change : {delta:+.2f}%p")
+
+        # 재초기화한 뉴런 지표 초기화
+        for name, indices in targets.items():
+            if indices:
+                age[name][indices] = 0
+                utility[name][indices] = 0
+
+        log["regrow_steps"].append(log["global_step"])
+        log["regrow_count"].append(total)
+        log["regrow_by_layer"].append(targets)
+        return model, optimizer
     
-    elif method == 'ours':
+    elif method in ('ours', 'ours_no_noise'):
+        # ours_no_noise: 대칭 깨기 노이즈만 빼고 나머지는 ours와 완전히 동일 (마 조건)
+        noise_std = 0.0 if method == 'ours_no_noise' else cfg["noise_std"]
         # dead idx가 전달되었다면 그대로 사용
         # 전달되지 않았다면 새로 계산
         if dead_idx_calculated is None:
@@ -249,7 +324,7 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
             model,
             dead_list,
             source_list,
-            cfg["noise_std"], 
+            noise_std,
             inplace = True,
             optimizer = optimizer
         )
