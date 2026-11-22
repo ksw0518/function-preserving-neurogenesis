@@ -87,7 +87,7 @@ def regrow(model, dead_idx: list[list], neurons_to_clone: list[list], noise_std:
                 layer.weight[s] += x
                 layer.weight[d] -= x
     if optimizer is not None:
-            reset_optimizer_state(optimizer, regrown, dead_idx, neurons_to_clone)
+        reset_optimizer_state(optimizer, regrown, dead_idx, [[] for _ in dead_idx])
     return regrown
 
 

@@ -117,7 +117,11 @@ def select_low_utility(
             # 기준 age 이상 뉴런들 중 dead 뉴런 선택
             dead = torch.zeros_like(mature, dtype=torch.bool)
             dead[dead_idx[layer_idx]] = True
-            candidates = torch.where(mature & dead)[0].tolist()
+            cand = torch.where(mature & dead)[0]
+            max_n = max(1, int(len(mature_indices) * utility_min_p))
+            if len(cand) > max_n:
+                cand = cand[torch.argsort(scores[cand])[:max_n]]  # utility 낮은 순
+            candidates = cand.tolist()
         # utility 하위 후보로 검출
         else:
             num_targets = max(1, int(len(mature_indices) * utility_min_p))
@@ -280,13 +284,17 @@ def diagnose_and_regrow(method, model, utility, age, optimizer, cfg, log, train_
         else:
             dead_idx = dead_idx_calculated
         
+        linear = [mod for mod in model.modules() if isinstance(mod, nn.Linear)]
+        contribution = {
+            name: utility[name] * linear[i + 1].weight.abs().sum(dim=0)
+            for i, name in enumerate(utility.keys())
+        }
         targets, sources = select_low_utility(
-            utility,
+            contribution,
             age,
             cfg["maturity"],
             cfg["p"],
-            dead_idx=dead_idx,
-            use_dead=True
+            use_dead=False
         )
 
         names = list(utility.keys())
@@ -449,7 +457,7 @@ def run(method, seed, cfg, train_loader, test_loader):
 
                 old_model = model
                 # 뉴런 삭제, 재생성
-                if epoch <= cfg["epochs_per_task"] * 0.8:
+                if epoch < cfg["epochs_per_task"] - 1:
                     model, optimizer = diagnose_and_regrow(
                     method, model, utility, age, optimizer,
                     cfg, log, train_loader, perm, criterion=criterion, test_loader= test_loader, dead_idx_calculated=dead_idx
