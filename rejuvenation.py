@@ -273,7 +273,11 @@ def run_rejuvenation(
             accuracy_before=acc_before, accuracy_after=acc_after,
             delta_percentage_points=delta,
         )
-        print(f"\n[REGROW ACCURACY] Step {log['global_step']}")
+        print(
+            f"\n[REGROW ACCURACY] Step {log['global_step']} | "
+            f"num_tasks={cfg['num_tasks']} | "
+            f"epochs_per_task={cfg['epochs_per_task']}"
+        )
         print(f"Before : {acc_before * 100:.2f}%")
         print(f"After  : {acc_after * 100:.2f}%")
         print(f"Change : {delta:+.2f}%p")

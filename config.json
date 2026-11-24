@@ -1,7 +1,7 @@
 {
-  "methods": ["ours"],
+  "methods": ["rejuvenation"],
   "seeds": [0],
-  "num_tasks": 100,
+  "num_tasks": 50,
   "epochs_per_task": 20,
   "lr": 0.001,
   "p": 0.05,
