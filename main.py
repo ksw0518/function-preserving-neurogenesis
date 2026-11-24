@@ -517,7 +517,7 @@ def main():
             # run 하나 끝날 때마다 저장 → 중간에 멈춰도 끝난 것까지는 남음
             # 그래프·표는 이 파일 따로 불러서 그림 (학습과 시각화 분리)
             with open(path, 'w') as f:
-                json.dump({'config': CONFIG, 'results': results}, f)
+                json.dump({'config': CONFIG, 'results': results}, f, indent=4)
             print(f'저장: {path} ({method}_seed{seed} 완료)')
 
 
