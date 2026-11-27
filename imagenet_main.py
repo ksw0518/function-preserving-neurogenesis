@@ -9,7 +9,8 @@ Parquet는 첫 실행 시 외장 SSD에 uint8 메모리맵 캐시를 만든다. 
 
 과제마다 중복 없는 클래스 쌍을 선택하고 0/1로 라벨을 바꾼다.
 모델/Adam은 과제 간 유지하며 모든 방법/시드는 동일한 과제 순서로 비교한다.
-ours는 고정 너비의 채널 복제, rejuvenation은 고정 파라미터 예산의 채널 재배분.
+ours와 ours_no_noise는 매 epoch 성숙 채널 중 utility 하위 p 비율을 골라 상위 utility 채널로 복제한다.
+비활성 비율은 교체 전 측정하며, rejuvenation은 성숙한 비활성 채널에 재배분을 적용한다.
 cbp는 매 epoch 성숙 채널의 utility 하위 p 비율을 무작위 재초기화하고 출력을 0으로
 설정하는 계획서 기준 변형이다. 원 논문의 매 step 교체 스케줄 전체 재현은 아니다.
 회춘은 기존 MLP 버전과 같은 NR 적용 버전이며 BN gamma/L1/rescaling 및
@@ -375,7 +376,14 @@ def run(method, seed, cfg, train_base, val_base, class_names, output):
     val_index = index_classes(val_base.targets, len(class_names))
     directory = output / f'{method}_seed{seed}'
     directory.mkdir(parents=True)
-    log = {'step_acc': [], 'task_acc': [], 'dead_ratio': [], 'dead_ratio_by_layer': [],
+    selection = {
+        'standard': 'none',
+        'rejuvenation': 'mature_near_dead',
+        'cbp': 'lowest_mature_utility',
+        'ours': 'lowest_mature_utility',
+        'ours_no_noise': 'lowest_mature_utility',
+    }[method]
+    log = {'target_selection': selection, 'step_acc': [], 'task_acc': [], 'dead_ratio': [], 'dead_ratio_by_layer': [],
            'regrow_steps': [], 'regrow_count': [], 'regrow_by_layer': [],
            'global_step': 0, 'epochs': [], 'regrow_events': [],
            'class_pairs': [[class_names[a], class_names[b]] for a, b in pairs],
@@ -407,10 +415,11 @@ def run(method, seed, cfg, train_base, val_base, class_names, output):
             dead, stats = detect_channels(model, diagnostic, cfg['near_dead_threshold'])
             log['dead_ratio'].append(stats['overall_dead_ratio'])
             log['dead_ratio_by_layer'].append(stats['by_layer'])
-            targets = [[j for j in group if age[i][j].item() >= cfg['maturity']]
-                       for i, group in enumerate(dead)]
-            if method == 'cbp':
-                targets = []
+            targets = []
+            if selection == 'mature_near_dead':
+                targets = [[j for j in group if age[i][j].item() >= cfg['maturity']]
+                           for i, group in enumerate(dead)]
+            elif selection == 'lowest_mature_utility':
                 for scores, ages in zip(utility, age):
                     mature = torch.where(ages >= cfg['maturity'])[0]
                     count = min(len(mature), max(1, int(len(mature) * cfg['p'])))
@@ -475,6 +484,7 @@ def summarize_results(root):
                               for event in log['regrow_events']], dtype=float)
         summary = {
             'run': label,
+            'target_selection': log.get('target_selection', 'unrecorded'),
             'completed_tasks': len(accuracy),
             'completed_epochs': len(log['epochs']),
             'requested_tasks': cfg['num_tasks'],
@@ -550,7 +560,7 @@ def summarize_results(root):
         },
         'limitations': [
             'One seed provides no estimate of variation across independent seeds.',
-            'ours selects mature near-dead channels; cbp replaces the lowest-utility mature fraction every epoch. Replacement counts differ.',
+            'Replacement counts and channel identities may differ between runs. Older logs do not record target_selection.',
             'No statistical significance test or retrospective evaluation of all tasks is implied.',
         ],
     }
@@ -573,7 +583,7 @@ def main():
     parser.add_argument('--widths', nargs=3, type=int, default=[16, 32, 64])
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--beta', type=float, default=0.99)
-    parser.add_argument('--p', type=float, default=0.05, help='CBP의 epoch당 성숙 채널 교체 비율')
+    parser.add_argument('--p', type=float, default=0.05, help='cbp, ours, ours_no_noise의 epoch당 성숙 채널 중 낮은 utility 교체 비율')
     parser.add_argument('--maturity', type=int, default=100)
     parser.add_argument('--noise-std', type=float, default=0.02)
     parser.add_argument('--near-dead-threshold', type=float, default=0.99)
